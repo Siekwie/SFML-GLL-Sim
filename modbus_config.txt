@@ -1,0 +1,8 @@
+ip=127.0.0.1
+port=502
+slave_id=1
+num_inputs=8
+num_outputs=8
+num_analog_inputs=0
+num_analog_outputs=0
+analog_register_mode=16

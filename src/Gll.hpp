@@ -60,6 +60,8 @@ enum class Mod
   Ns
 };
 const char *modKeyword(Mod m);  // "", "NOT", "PS", "NS"
+// A chain as written, e.g. {Not, Ps} -> "NOT(PS(x))".
+std::string modChainText(const std::vector<Mod> &mods, const std::string &inner = "x");
 
 // Column range [col0, col1) inside Statement::raw. -1 when unknown.
 struct Span
@@ -69,10 +71,12 @@ struct Span
 
 struct Arg
 {
-  std::string symbol;  // signal name, or literal text without quotes
-  Mod mod = Mod::None;
-  bool quoted = false; // literal was written as "..."
-  Span span;           // span of `symbol` in the raw line
+  std::string symbol;     // signal name, or literal text without quotes
+  std::vector<Mod> mods;  // modifier chain, outermost first: NOT(PS(a)) = {Not, Ps}
+  bool quoted = false;    // literal was written as "..."
+  Span span;              // span of `symbol` in the raw line
+
+  Mod outer() const { return mods.empty() ? Mod::None : mods.front(); }
 };
 
 struct Output

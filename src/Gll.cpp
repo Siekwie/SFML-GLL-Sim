@@ -188,49 +188,49 @@ bool parseDecl(const std::string &raw, size_t from, size_t to, Statement &st, st
   return true;
 }
 
-// One gate argument: `x`, `"lit"` or `MOD(x)`.
+// One gate argument: `x`, `"lit"` or a modifier chain such as `NOT(PS(x))`.
 bool parseArg(const Piece &p, Arg &arg, std::string &error)
 {
   Piece inner = p;
-  for (Mod m : {Mod::Not, Mod::Ps, Mod::Ns})
+  for (bool peeled = true; peeled;)
   {
-    std::string kw = modKeyword(m);
-    if (!startsWith(p.text, (kw + "(").c_str()))
-      continue;
-    // The modifier's parenthesis must close at the very end of the argument.
-    int depth = 0;
-    size_t close = std::string::npos;
-    for (size_t i = kw.size(); i < p.text.size() && close == std::string::npos; ++i)
+    peeled = false;
+    for (Mod m : {Mod::Not, Mod::Ps, Mod::Ns})
     {
-      if (p.text[i] == '(')
-        ++depth;
-      else if (p.text[i] == ')' && --depth == 0)
-        close = i;
+      std::string kw = modKeyword(m);
+      if (!startsWith(inner.text, (kw + "(").c_str()))
+        continue;
+      // The modifier's parenthesis must close at the very end of the argument.
+      int depth = 0;
+      size_t close = std::string::npos;
+      for (size_t i = kw.size(); i < inner.text.size() && close == std::string::npos; ++i)
+      {
+        if (inner.text[i] == '(')
+          ++depth;
+        else if (inner.text[i] == ')' && --depth == 0)
+          close = i;
+      }
+      if (close != inner.text.size() - 1)
+      {
+        error = "Unexpected text after modifier " + kw + "(...)";
+        return false;
+      }
+      Piece body = trimmed(inner.text, kw.size() + 1, close);
+      if (body.text.find(',') != std::string::npos)
+      {
+        error = kw + "() takes exactly one argument";
+        return false;
+      }
+      if (body.text.empty())
+      {
+        error = kw + "() needs an argument";
+        return false;
+      }
+      arg.mods.push_back(m);
+      inner = {body.text, inner.col0 + body.col0, inner.col0 + body.col1};
+      peeled = true;
+      break;
     }
-    if (close != p.text.size() - 1)
-    {
-      error = "Unexpected text after modifier " + kw + "(...)";
-      return false;
-    }
-    Piece body = trimmed(p.text, kw.size() + 1, close);
-    if (body.text.find_first_of("()") != std::string::npos)
-    {
-      error = "Nested modifiers are not supported";
-      return false;
-    }
-    if (body.text.find(',') != std::string::npos)
-    {
-      error = kw + "() takes exactly one argument";
-      return false;
-    }
-    if (body.text.empty())
-    {
-      error = kw + "() needs an argument";
-      return false;
-    }
-    arg.mod = m;
-    inner = {body.text, p.col0 + body.col0, p.col0 + body.col1};
-    break;
   }
   if (isQuoted(inner.text))
   {
@@ -250,7 +250,7 @@ bool parseArg(const Piece &p, Arg &arg, std::string &error)
 // True if the first argument of a TON/TOF/CTU/CTD is its preset rather than a signal.
 bool isPresetArg(const NodeTypeInfo &info, const Arg &a)
 {
-  if (a.mod != Mod::None)
+  if (!a.mods.empty())
     return false;
   if (info.presetTime)
     return a.quoted || (!a.symbol.empty() && (std::isdigit(static_cast<unsigned char>(a.symbol[0])) || a.symbol[0] == '.'));
@@ -409,7 +409,9 @@ namespace
 std::string formatArg(const Arg &a)
 {
   std::string s = a.quoted ? "\"" + a.symbol + "\"" : a.symbol;
-  return a.mod == Mod::None ? s : std::string(modKeyword(a.mod)) + "(" + s + ")";
+  for (auto m = a.mods.rbegin(); m != a.mods.rend(); ++m)
+    s = std::string(modKeyword(*m)) + "(" + s + ")";
+  return s;
 }
 }  // namespace
 
@@ -461,6 +463,14 @@ void refresh(Statement &st)
     st = std::move(parsed);
   else
     st.raw = text;  // structured fields are unusable as text; keep what we can
+}
+
+std::string modChainText(const std::vector<Mod> &mods, const std::string &inner)
+{
+  std::string s = inner;
+  for (auto m = mods.rbegin(); m != mods.rend(); ++m)
+    s = std::string(modKeyword(*m)) + "(" + s + ")";
+  return s;
 }
 
 std::string toText(const Script &s, const std::string &eol)

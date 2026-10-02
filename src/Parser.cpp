@@ -1,5 +1,6 @@
 #include "Parser.hpp"
 #include "TimeUtils.hpp"
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 
@@ -56,9 +57,14 @@ void compileDecl(Program &prog, const Statement &st, int line)
   }
 }
 
-// Inline NOT()/PS()/NS() become internal nodes placed before the gate. Like V1, all
-// NOT()s are created first, then PS()s, then NS()s, each in argument order.
-// Returns, per argument, the output signal of its modifier node (-1 if it has none).
+// Inline NOT()/PS()/NS() become internal nodes placed before the gate, so they are
+// evaluated (and edge detectors update their memory) on every scan, whatever the
+// gate does with the result. Chains are built inside out: for NOT(PS(a)) the PS
+// node comes first and the NOT node reads its output.
+// Nodes are created in rounds by depth (innermost modifiers first); within a
+// round all NOT()s come first, then PS()s, then NS()s, each in argument order.
+// For single modifiers this is exactly the V1 order.
+// Returns, per argument, the output signal of its outermost modifier node (-1 if none).
 std::vector<int> compileModifiers(Program &prog, const Statement &st, int line)
 {
   static const struct
@@ -72,23 +78,33 @@ std::vector<int> compileModifiers(Program &prog, const Statement &st, int line)
     {Mod::Ns, Program::Node::NS_, "_ns_"},
   };
   std::vector<int> outputs(st.args.size(), -1);
-  for (const auto &m : kMods)
-    for (size_t i = 0; i < st.args.size(); ++i)
-    {
-      const Arg &arg = st.args[i];
-      if (arg.mod != m.mod)
-        continue;
-      Program::Node node;
-      node.type = m.type;
-      node.name = m.prefix + std::to_string(prog.nodes.size());
-      node.inputs.push_back(getOrCreateSignal(prog, arg.symbol));
-      outputs[i] = getOrCreateSignal(prog, node.name + "_out");
-      node.outputs.push_back(outputs[i]);
-      node.sourceLine = line;
-      node.internal = true;
-      prog.nodes.push_back(std::move(node));
-      addToken(prog, line, arg.span, arg.symbol);
-    }
+  size_t depth = 0;
+  for (const Arg &a : st.args)
+    depth = std::max(depth, a.mods.size());
+
+  for (size_t round = 0; round < depth; ++round)
+    for (const auto &m : kMods)
+      for (size_t i = 0; i < st.args.size(); ++i)
+      {
+        const Arg &arg = st.args[i];
+        if (arg.mods.size() <= round || arg.mods[arg.mods.size() - 1 - round] != m.mod)
+          continue;
+        Program::Node node;
+        node.type = m.type;
+        node.name = m.prefix + std::to_string(prog.nodes.size());
+        if (round == 0)
+        {
+          node.inputs.push_back(getOrCreateSignal(prog, arg.symbol));
+          addToken(prog, line, arg.span, arg.symbol);
+        }
+        else
+          node.inputs.push_back(outputs[i]);
+        outputs[i] = getOrCreateSignal(prog, node.name + "_out");
+        node.outputs.push_back(outputs[i]);
+        node.sourceLine = line;
+        node.internal = true;
+        prog.nodes.push_back(std::move(node));
+      }
   return outputs;
 }
 
@@ -118,7 +134,7 @@ void compileGate(Program &prog, const Statement &st, int line)
   for (size_t i = 0; i < st.args.size(); ++i)
   {
     const Arg &a = st.args[i];
-    if (a.mod != Mod::None)
+    if (!a.mods.empty())
     {
       node.inputs.push_back(modOut[i]);
       continue;

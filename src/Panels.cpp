@@ -621,27 +621,66 @@ float Inspector::drawGate(Editor &ed, Canvas &canvas, const Node &n, sf::FloatRe
 
     if (!p.literal)
     {
-      static const std::pair<const char *, gll::Mod> mods[] = {
-          {"—", gll::Mod::None}, {"NOT", gll::Mod::Not}, {"PS", gll::Mod::Ps}, {"NS", gll::Mod::Ns}};
+      // Chips model the common chains: an optional NOT around an optional
+      // edge (x, NOT(x), PS(x), NOT(PS(x)), ...). Other chains written in the
+      // code are shown as text and can be cleared.
+      using gll::Mod;
+      const auto &mods = p.mods;
+      const bool notOn = !mods.empty() && mods.front() == Mod::Not;
+      const Mod edge = mods.size() > (notOn ? 1u : 0u) ? mods[notOn ? 1 : 0] : Mod::None;
+      const bool canonical = mods.size() <= (notOn ? 2u : 1u) && edge != Mod::Not;
+      const sf::Color edgeColor = Theme::category(gll::Category::Edge);
+      std::optional<std::vector<Mod>> chain;
+
       float cx = f.position.x + f.size.x + 6.f;
-      for (const auto &[label, mod] : mods)
+      sf::FloatRect clear({cx, f.position.y}, {32.f, f.size.y});
+      if (ui.chip(clear, "—", mods.empty(), edgeColor) && !mods.empty())
+        chain = std::vector<Mod>{};
+      ui.tooltip(clear, "Plain input");
+      cx += 34.f;
+      if (canonical)
       {
-        sf::FloatRect c({cx, f.position.y}, {32.f, f.size.y});
-        if (ui.chip(c, label, p.mod == mod, Theme::category(gll::Category::Edge)) && editable && p.mod != mod)
+        auto build = [](bool n, Mod e)
         {
-          gll::Mod m = mod;
-          ed.apply("Change input modifier", [&](gll::Script &s)
-          {
-            edits::setInputMod(s, line, arg, m);
-            return true;
-          });
-          return row.y - r.position.y;
-        }
-        ui.tooltip(c, mod == gll::Mod::None  ? "Plain input"
-                      : mod == gll::Mod::Not ? "Inverted — NOT(x)"
-                      : mod == gll::Mod::Ps  ? "Rising edge pulse — PS(x)"
-                                             : "Falling edge pulse — NS(x)");
-        cx += 34.f;
+          std::vector<Mod> c;
+          if (n)
+            c.push_back(Mod::Not);
+          if (e != Mod::None)
+            c.push_back(e);
+          return c;
+        };
+        sf::FloatRect cn({cx, f.position.y}, {32.f, f.size.y});
+        sf::FloatRect cp({cx + 34.f, f.position.y}, {32.f, f.size.y});
+        sf::FloatRect cs({cx + 68.f, f.position.y}, {32.f, f.size.y});
+        if (ui.chip(cn, "NOT", notOn, edgeColor))
+          chain = build(!notOn, edge);
+        if (ui.chip(cp, "PS", edge == Mod::Ps, edgeColor))
+          chain = build(notOn, edge == Mod::Ps ? Mod::None : Mod::Ps);
+        if (ui.chip(cs, "NS", edge == Mod::Ns, edgeColor))
+          chain = build(notOn, edge == Mod::Ns ? Mod::None : Mod::Ns);
+        ui.tooltip(cn, "Invert — NOT(x); combines with an edge: NOT(PS(x))");
+        ui.tooltip(cp, "Rising edge pulse — PS(x)");
+        ui.tooltip(cs, "Falling edge pulse — NS(x)");
+      }
+      else
+      {
+        sf::FloatRect box({cx, f.position.y}, {100.f, f.size.y});
+        draw::roundRect(*ui.rt, box, 5.f, Theme::withAlpha(edgeColor, 70), edgeColor, 1.f);
+        std::string t = gll::modChainText(mods, "·");
+        draw::text(*ui.rt, ui.font, draw::fit(ui.font, t, 11, box.size.x - 8.f),
+                   {box.position.x + box.size.x / 2.f, box.position.y + (box.size.y - 15.f) / 2.f}, 11,
+                   Theme::TextDefault, draw::Align::Center);
+        ui.tooltip(box, "Modifier chain " + gll::modChainText(mods) + " (edit it in the code or clear it)");
+      }
+      if (chain && editable)
+      {
+        std::vector<Mod> c = *chain;
+        ed.apply("Change input modifier", [&](gll::Script &s)
+        {
+          edits::setInputMods(s, line, arg, c);
+          return true;
+        });
+        return row.y - r.position.y;
       }
     }
   }

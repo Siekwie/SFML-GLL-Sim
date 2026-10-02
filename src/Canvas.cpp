@@ -492,24 +492,36 @@ void Canvas::openContextMenu(sf::Vector2f screen)
     const int line = n.line, arg = p.index;
     std::vector<MenuItem> items;
     items.push_back({"Input " + (p.label.empty() ? std::to_string(arg + 1) : p.label)});
-    auto modItem = [&](const std::string &label, gll::Mod m)
+    using gll::Mod;
+    bool known = false;
+    auto modItem = [&](const std::string &label, std::vector<Mod> chain)
     {
-      MenuItem it{label, [this, line, arg, m]
+      MenuItem it{label, [this, line, arg, chain]
       {
         ed_.apply("Change input modifier", [&](gll::Script &s)
         {
-          gll::edits::setInputMod(s, line, arg, m);
+          gll::edits::setInputMods(s, line, arg, chain);
           return true;
         });
       }};
-      it.checked = p.mod == m;
+      it.checked = p.mods == chain;
+      known |= it.checked;
       it.enabled = !p.spare && !p.literal;
       items.push_back(it);
     };
-    modItem("Normal", gll::Mod::None);
-    modItem("Inverted  NOT()", gll::Mod::Not);
-    modItem("Rising edge  PS()", gll::Mod::Ps);
-    modItem("Falling edge  NS()", gll::Mod::Ns);
+    modItem("Normal", {});
+    modItem("Inverted\tNOT(x)", {Mod::Not});
+    modItem("Rising edge\tPS(x)", {Mod::Ps});
+    modItem("Falling edge\tNS(x)", {Mod::Ns});
+    modItem("Not rising edge\tNOT(PS(x))", {Mod::Not, Mod::Ps});
+    modItem("Not falling edge\tNOT(NS(x))", {Mod::Not, Mod::Ns});
+    if (!known && !p.mods.empty())
+    {
+      MenuItem cur{"Current\t" + gll::modChainText(p.mods), [] {}};
+      cur.checked = true;
+      cur.enabled = false;
+      items.push_back(cur);
+    }
     MenuItem disc{"Disconnect", [this, port] { detachOnly(port); }};
     disc.enabled = !p.symbol.empty() && !p.spare;
     items.push_back(disc);
@@ -933,14 +945,16 @@ void Canvas::drawGate(sf::RenderTarget &rt, const Node &n, bool selected)
     float py = p.pos.y;
     drawPort(rt, p, true, true);
     float lx = x + 12.f;
-    if (p.mod != gll::Mod::None)
+    // Modifier chain, innermost next to the port (the signal passes it first):
+    // a bubble for NOT, a triangle up / down for PS / NS.
+    for (auto m = p.mods.rbegin(); m != p.mods.rend(); ++m)
     {
       sf::Color mc = Theme::category(gll::Category::Edge);
-      if (p.mod == gll::Mod::Not)
+      if (*m == gll::Mod::Not)
         draw::circle(rt, {lx + 3.f, py}, 3.5f, Theme::NodeBody, mc, 1.5f);
       else
       {
-        float d = p.mod == gll::Mod::Ps ? -1.f : 1.f;
+        float d = *m == gll::Mod::Ps ? -1.f : 1.f;
         sf::ConvexShape tri(3);
         tri.setPoint(0, {lx + 3.f, py + 4.f * d});
         tri.setPoint(1, {lx - 1.f, py - 3.f * d});
@@ -948,8 +962,10 @@ void Canvas::drawGate(sf::RenderTarget &rt, const Node &n, bool selected)
         tri.setFillColor(mc);
         rt.draw(tri);
       }
-      lx += 12.f;
+      lx += 11.f;
     }
+    if (!p.mods.empty())
+      lx += 1.f;
     if (!detail)
       continue;
     std::string label = p.label;

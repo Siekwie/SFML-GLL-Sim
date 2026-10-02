@@ -16,6 +16,7 @@ namespace fs = std::filesystem;
 static int g_checks = 0, g_failures = 0;
 
 int runEditTests();  // tests/test_edits.cpp
+int runSimTests();   // tests/test_sim.cpp
 
 #define CHECK(cond)                                                              \
   do                                                                             \
@@ -130,7 +131,7 @@ static bool sameStatement(const gll::Statement &a, const gll::Statement &b)
         a.args.size() != b.args.size() || a.outputs.size() != b.outputs.size())
       return false;
     for (size_t i = 0; i < a.args.size(); ++i)
-      if (a.args[i].symbol != b.args[i].symbol || a.args[i].mod != b.args[i].mod || a.args[i].quoted != b.args[i].quoted)
+      if (a.args[i].symbol != b.args[i].symbol || a.args[i].mods != b.args[i].mods || a.args[i].quoted != b.args[i].quoted)
         return false;
     for (size_t i = 0; i < a.outputs.size(); ++i)
       if (a.outputs[i].symbol != b.outputs[i].symbol)
@@ -363,7 +364,7 @@ static void testParseLine()
   auto g = line("AND gate1( a ,NOT( b ), \"7\" )  ->  c,d");
   CHECK(g.kind == K::Gate && g.type == gll::NodeType::AND_ && g.name == "gate1");
   CHECK(g.args.size() == 3 && g.outputs.size() == 2);
-  CHECK(g.args[1].mod == gll::Mod::Not && g.args[1].symbol == "b" && slice(g, g.args[1].span) == "b");
+  CHECK(g.args[1].outer() == gll::Mod::Not && g.args[1].symbol == "b" && slice(g, g.args[1].span) == "b");
   CHECK(g.args[2].quoted && g.args[2].symbol == "7" && slice(g, g.args[2].span) == "7");
   CHECK(slice(g, g.nameSpan) == "gate1" && slice(g, g.outputs[1].span) == "d");
   CHECK(gll::formatStatement(g) == "AND gate1(a, NOT(b), \"7\") -> c, d");
@@ -394,13 +395,24 @@ static void testParseLine()
   CHECK(lt.args[1].quoted && gll::formatStatement(lt) == "LT x(a, \"0x80\") -> y");
   CHECK(gll::formatStatement(line("LT x(a, 5) -> y")) == "LT x(a, 5) -> y");
 
-  // Nested / malformed modifiers
+  // Nested modifiers: parsed as a chain (outermost first) and round-tripped
   std::string err;
   gll::Statement st;
-  CHECK(!gll::parseLine("AND g(NOT(PS(a))) -> x", st, err) && err == "Nested modifiers are not supported");
-  CHECK(!gll::parseLine("AND g(NOT(NOT(a)), b) -> x", st, err) && err == "Nested modifiers are not supported");
+  CHECK(gll::parseLine("AND g(NOT(PS(a)), b) -> x", st, err));
+  CHECK((st.args[0].mods == std::vector<gll::Mod>{gll::Mod::Not, gll::Mod::Ps}) && st.args[0].symbol == "a" &&
+        slice(st, st.args[0].span) == "a");
+  CHECK(gll::formatStatement(st) == "AND g(NOT(PS(a)), b) -> x");
+  CHECK(gll::parseLine("  OR g( NS( NOT( a ) ) ) -> x", st, err));
+  CHECK((st.args[0].mods == std::vector<gll::Mod>{gll::Mod::Ns, gll::Mod::Not}) && slice(st, st.args[0].span) == "a");
+  CHECK(gll::formatStatement(st) == "  OR g(NS(NOT(a))) -> x");
+  CHECK(gll::parseLine("AND g(NOT(NOT(NOT(a)))) -> x", st, err) && st.args[0].mods.size() == 3);
+  CHECK(gll::modChainText({gll::Mod::Not, gll::Mod::Ps}) == "NOT(PS(x))");
+  // Malformed modifiers
   CHECK(!gll::parseLine("AND g(NOT(a, b)) -> x", st, err));
   CHECK(!gll::parseLine("AND g(NOT()) -> x", st, err));
+  CHECK(!gll::parseLine("AND g(NOT(PS())) -> x", st, err));
+  CHECK(!gll::parseLine("AND g(NOT(PS(a)x)) -> x", st, err));
+  CHECK(!gll::parseLine("AND g(NOT(foo(a))) -> x", st, err));
 
   // Errors
   CHECK(!gll::parseLine("AND -> x", st, err) && err == "Invalid gate syntax");
@@ -528,7 +540,11 @@ static void testCompile()
   Program q;
   std::string msg = compileText("IN a\nFOO g(a) -> b\n", q);
   CHECK(msg.find("Unknown gate type: FOO") != std::string::npos);
-  CHECK(compileText("AND g(NOT(PS(a))) -> b\n", q).find("Nested modifiers are not supported") != std::string::npos);
+  CHECK(compileText("IN a\nAND g(NOT(PS(a))) -> b\n", q).empty());
+  // NOT(PS(a)): the PS node is created first and the NOT reads its output.
+  CHECK(q.nodes.size() == 3 && q.nodes[0].type == Program::Node::PS_ && q.nodes[1].type == Program::Node::NOT_ &&
+        q.nodes[1].inputs[0] == q.nodes[0].outputs[0] && q.nodes[2].inputs[0] == q.nodes[1].outputs[0] &&
+        q.nodes[0].inputs[0] == q.symbolToSignal.at("a"));
   CHECK(compileText("IN a\n\nAND g -> b\n", q).find("Missing '('") != std::string::npos);
 
   // parseFile error format
@@ -555,5 +571,6 @@ int main()
   testRoundTrip();
   std::printf("%d checks, %d failures, %zu sample files\n", g_checks, g_failures, sampleFiles().size());
   int editFailures = runEditTests();
-  return g_failures + editFailures == 0 ? 0 : 1;
+  int simFailures = runSimTests();
+  return g_failures + editFailures + simFailures == 0 ? 0 : 1;
 }

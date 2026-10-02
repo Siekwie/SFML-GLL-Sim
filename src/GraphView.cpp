@@ -116,7 +116,7 @@ void GraphView::build(const gll::Script &script, const Program &prog, Document::
       if (a < st.args.size())
       {
         const auto &arg = st.args[a];
-        p.mod = arg.mod;
+        p.mods = arg.mods;
         if (arg.symbol != gll::kNotConnected)
         {
           p.symbol = arg.symbol;

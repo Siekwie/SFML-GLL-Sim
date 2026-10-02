@@ -129,7 +129,18 @@ The `NOT` gate is used to compute the logical `NOT` of its input. The output is 
 AND gate3(a, NOT(b)) -> c
 ```
 
-This makes the circuit "code" more dense and easier/natural to read. Modifiers cannot be nested (`NOT(PS(a))` is an error); use a standalone node for that.
+This makes the circuit "code" more dense and easier/natural to read.
+
+**Nesting**: inline modifiers can be nested, and they apply from the inside out:
+
+```
+# HIGH except during the one scan in which `a` rises
+OR notRising(NOT(PS(a))) -> x
+```
+
+`NOT(PS(a))` first detects the rising edge of `a`, then inverts it. Any combination and depth works (`NOT(NS(a))`, `PS(NOT(a))`, ...) and behaves exactly like the same chain built from standalone `NOT` / `PS` / `NS` nodes. (V1 only got this right when the inner modifier happened to be processed first; `NOT(PS(a))` silently turned into a constant HIGH there.)
+
+Inline modifiers are separate internal nodes evaluated on every scan, before the gate that uses them. An edge detector therefore always tracks its input, even while the gate's other inputs make the result irrelevant: in `AND y(b, PS(a))`, a rise of `a` that happens while `b` is LOW is consumed in that scan and does not fire later when `b` goes HIGH.
 
 **Truth table**:
 | B | X |
@@ -505,7 +516,7 @@ Since V2 the simulator is a visual node editor. The `.gll` file stays the single
 - **Palette** (left): drag a node onto the canvas, or click it to drop it in the middle of the view. Right-clicking the canvas offers the same list.
 - **Connecting**: drag from an output port to an input port (or the other way round). Dropping onto a node body uses its first free input. Dragging a connected input away unplugs it; dropping a wire on empty canvas offers to create a new node that is connected right away.
 - **Inputs of AND/OR/XOR** grow: drop a wire on the `+` port to add one.
-- **Input modifiers**: right-click an input port (or use the chips in the inspector) to make it inverted `NOT(x)`, rising edge `PS(x)` or falling edge `NS(x)`. The port shows a bubble / triangle.
+- **Input modifiers**: right-click an input port (or use the chips in the inspector) to make it inverted `NOT(x)`, rising edge `PS(x)`, falling edge `NS(x)`, or an inverted edge `NOT(PS(x))` / `NOT(NS(x))`. The port shows a bubble for NOT and a triangle for each edge, innermost next to the port. Other chains written in the code (e.g. `PS(NOT(x))`) are shown as text in the inspector.
 - **Inspector** (right): name, presets (`PT`, `PV`), every input as a text field (type a signal name or, for comparators, a constant such as `0x80`), output signal names and the live state. Renaming an output renames the signal everywhere, so wires stay attached.
 - **Code panel** (right, below the inspector): the file with live signal colours and the line being evaluated. Clicking a line selects its node and vice versa.
 - **Notes**: with nothing selected the inspector lists things worth a look — undriven outputs, signals nothing drives, unconnected inputs.

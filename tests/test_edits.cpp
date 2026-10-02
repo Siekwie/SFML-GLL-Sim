@@ -324,7 +324,7 @@ void testConnectInput()
     ed::connectInput(s, 0, 2, "y");
     ed::connectInput(s, 0, 3, "z");
     EXPECT_TEXT(s, "AND g(NOT(w), PS(x), NS(y), z) -> q");
-    ECHECK(s.lines[0].args[0].mod == Mod::Not && s.lines[0].args[1].mod == Mod::Ps && s.lines[0].args[2].mod == Mod::Ns);
+    ECHECK(s.lines[0].args[0].outer() == Mod::Not && s.lines[0].args[1].outer() == Mod::Ps && s.lines[0].args[2].outer() == Mod::Ns);
   }
   {
     // Fixed arity gate with preset: preset stays, only signal ports count.
@@ -424,7 +424,7 @@ void testSetInputMod()
   ed::setInputMod(s, 1, 0, Mod::None);
   ed::setInputMod(s, 1, 1, Mod::None);
   EXPECT_TEXT(s, J({"IN a, b", "  AND g(a, b) -> q"}));
-  ECHECK(s.lines[1].args[0].mod == Mod::None);
+  ECHECK(s.lines[1].args[0].outer() == Mod::None);
 
   // The compiled program gets an internal NOT node.
   ed::setInputMod(s, 1, 0, Mod::Not);
@@ -456,7 +456,7 @@ void testSetInputLiteral()
 
   ed::setInputLiteral(s, 2, 0, "5");  // the modifier is reset
   EXPECT_TEXT(s, J({"IN x, y", "LT c(x, \"0x80\") -> o", "GT d(\"5\", y) -> p", "EQ e(x, \"1\") -> r"}));
-  ECHECK(s.lines[2].args[0].mod == Mod::None);
+  ECHECK(s.lines[2].args[0].outer() == Mod::None);
 
   ed::setInputLiteral(s, 3, 1, "128");  // replace a literal
   EXPECT_TEXT(s, J({"IN x, y", "LT c(x, \"0x80\") -> o", "GT d(\"5\", y) -> p", "EQ e(x, \"128\") -> r"}));

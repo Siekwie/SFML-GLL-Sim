@@ -25,7 +25,7 @@ struct Port
 {
   std::string label;      // "S", "CU", "Q", "CV" ... (empty for variadic inputs)
   int index = -1;         // input: argument index; output: 0 = Q, 1 = CV
-  gll::Mod mod = gll::Mod::None;
+  std::vector<gll::Mod> mods;  // modifier chain, outermost first
   std::string symbol;     // connected signal name, empty when unconnected
   bool literal = false;   // comparator constant (symbol holds the literal)
   bool spare = false;     // the extra "+" input of AND / OR / XOR

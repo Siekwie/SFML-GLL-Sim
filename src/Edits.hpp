@@ -54,9 +54,13 @@ void setPreset(Script &s, int line, const std::optional<std::string> &preset);
 void connectInput(Script &s, int line, int arg, const std::string &symbol);
 
 // Disconnect an input. Variadic gates with more than two inputs drop the
-// port; otherwise it becomes kNotConnected.
+// port; otherwise it becomes a plain kNotConnected (modifiers removed, so it
+// really reads LOW).
 void disconnectInput(Script &s, int line, int arg);
 
+// Replace the modifier chain of an input (outermost first; empty = plain).
+void setInputMods(Script &s, int line, int arg, const std::vector<Mod> &mods);
+// Single modifier shorthand; Mod::None clears the chain.
 void setInputMod(Script &s, int line, int arg, Mod mod);
 
 // Comparator literal ("0x80", "128"), written quoted.

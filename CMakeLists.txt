@@ -22,12 +22,14 @@ option(GLL_BUILD_TESTS "Build the headless gll_tests executable" OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 
-# Language core: syntax layer, compiler, editing operations.
+# Language core: syntax layer, compiler, editing operations and simulator.
 # No SFML / Modbus dependency, so it can be unit tested headless.
 add_library(gll_core STATIC
   src/Gll.cpp
   src/Parser.cpp
   src/Edits.cpp
+  src/Graph.cpp
+  src/Sim.cpp
 )
 target_include_directories(gll_core PUBLIC src)
 
@@ -35,6 +37,7 @@ if(GLL_BUILD_TESTS)
     add_executable(gll_tests
       tests/test_main.cpp
       tests/test_edits.cpp
+      tests/test_sim.cpp
       tests/legacy/LegacyParser.cpp
     )
     target_link_libraries(gll_tests PRIVATE gll_core)
@@ -77,8 +80,6 @@ add_executable(GLLSimulator
   src/Canvas.cpp
   src/Panels.cpp
   src/Widgets.cpp
-  src/Graph.cpp
-  src/Sim.cpp
   src/ModbusManager.cpp
 )
 target_link_libraries(GLLSimulator PRIVATE gll_core)

@@ -199,15 +199,24 @@ void disconnectInput(Script &s, int line, int arg)
   refresh(st);
 }
 
-void setInputMod(Script &s, int line, int arg, Mod mod)
+void setInputMods(Script &s, int line, int arg, const std::vector<Mod> &mods)
 {
   if (!isGate(s, line))
     return;
   auto &st = s.lines[line];
   if (arg < 0 || arg >= static_cast<int>(st.args.size()))
     return;
-  st.args[arg].mod = st.args[arg].quoted ? Mod::None : mod;
+  st.args[arg].mods.clear();
+  if (!st.args[arg].quoted)
+    for (Mod m : mods)
+      if (m != Mod::None)
+        st.args[arg].mods.push_back(m);
   refresh(st);
+}
+
+void setInputMod(Script &s, int line, int arg, Mod mod)
+{
+  setInputMods(s, line, arg, mod == Mod::None ? std::vector<Mod>{} : std::vector<Mod>{mod});
 }
 
 void setInputLiteral(Script &s, int line, int arg, const std::string &literal)
@@ -219,7 +228,7 @@ void setInputLiteral(Script &s, int line, int arg, const std::string &literal)
     st.args.push_back(Arg{kNotConnected});
   st.args[arg].symbol = literal;
   st.args[arg].quoted = true;
-  st.args[arg].mod = Mod::None;
+  st.args[arg].mods.clear();
   refresh(st);
 }
 

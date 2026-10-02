@@ -1,6 +1,7 @@
 // Simulation tests for inline modifiers (NOT / PS / NS), including nested
 // chains, and for edge-detector memory: it must update on every scan, no
 // matter whether the gate that reads it currently cares (no short-circuit).
+#include "Edits.hpp"
 #include "Gll.hpp"
 #include "Parser.hpp"
 #include "Sim.hpp"
@@ -114,6 +115,27 @@ void testSharedInputs()
                s(1, 1, 1, 0), s(0, 1, 1, 0), s(1, 1, 0, 1), s(1, 1, 1, 0)});
 }
 
+// PS(NOT(a)) pulses on the falling edge of a, like NS(a). Scan 1 is left out on
+// purpose: edge memory starts LOW, so PS(NOT(a)) also pulses on the first scan
+// when a starts LOW (same as V1); whether that should change is still open.
+void testInvertedRisingIsFallingEdge()
+{
+  const std::string text = "IN a\nOUT x, n\nOR gx(PS(NOT(a))) -> x\nOR gn(NS(a)) -> n\n";
+  auto prog = build(text);
+  Simulator sim(prog);
+  const bool a[] = {0, 0, 1, 1, 1, 1, 1, 0, 1, 1};
+  for (int k = 0; k < 10; ++k)
+  {
+    sim.setSignal("a", a[k]);
+    scan(sim, *prog);
+    if (k == 0)
+      continue;
+    bool fall = k == 7;  // scan 8
+    SCHECK(sim.getSignalValue("x") == fall);
+    SCHECK(sim.getSignalValue("n") == fall);
+  }
+}
+
 // Every inline chain must behave exactly like the same chain built from
 // standalone NOT / PS / NS nodes, for any input sequence.
 void testChainsMatchStandaloneNodes()
@@ -196,6 +218,25 @@ void testNoSpuriousEdgeAfterReload()
   s2.setSignal("a", true);
   scan(s2, *p2);
   SCHECK(s2.getSignalValue("y"));  // and real edges still work
+
+  // Same, when the change is made through the editor's operations: a new gate
+  // reading PS(a) is added while a is HIGH. Neither gy nor the new gate pulses.
+  gll::Script script;
+  gll::ParseError err;
+  gll::parseScript(before, script, err);
+  int line = gll::edits::addGate(script, gll::NodeType::OR_, "or1");
+  gll::edits::connectInput(script, line, 0, "a");
+  gll::edits::setInputMod(script, line, 0, gll::Mod::Ps);
+  auto p3 = std::make_shared<Program>();
+  SCHECK(compile(script, *p3).ok);
+  Simulator s3(p3);
+  s3.transferStateFrom(s1);
+  for (int k = 0; k < 3; ++k)
+  {
+    scan(s3, *p3);
+    SCHECK(!s3.getSignalValue("y"));
+    SCHECK(!s3.getSignalValue("or1_Q"));
+  }
 }
 }  // namespace
 
@@ -204,6 +245,7 @@ int runSimTests()
   testNotOfRisingEdge();
   testEdgeMemoryWhileGated();
   testSharedInputs();
+  testInvertedRisingIsFallingEdge();
   testChainsMatchStandaloneNodes();
   testNoSpuriousEdgeAfterReload();
   std::printf("sim tests: %d checks, %d failures\n", g_checks, g_failures);

@@ -2,9 +2,9 @@
 #include "Graph.hpp"
 #include <algorithm>
 
-Simulator::Simulator(const Program &p) : prog_(p)
+Simulator::Simulator(std::shared_ptr<const Program> p) : progOwner_(std::move(p)), prog_(*progOwner_)
 {
-  size_t n = prog_.symbolToSignal.size();
+  size_t n = static_cast<size_t>(prog_.signalCount);
   cur_.assign(n, 0);
   next_ = cur_;
   prevStateAtCycleStart_.assign(n, 0);
@@ -95,7 +95,7 @@ void Simulator::update(float dt, float simHz, bool running, bool stepOnce)
 {
   if (topo_.empty() || topo_.size() != prog_.nodes.size())
   {
-    return; // Invalid topology
+    return; // Nothing to run / invalid topology
   }
 
   // Update timer elapsed times if running
@@ -308,6 +308,12 @@ bool Simulator::getTGateStatus(const std::string &gateName)
     return it->second;
   }
   return false;
+}
+
+float Simulator::getTimerElapsed(const std::string &gateName) const
+{
+  auto it = timerElapsedTime.find(gateName);
+  return it != timerElapsedTime.end() ? it->second : 0.0f;
 }
 
 void Simulator::setTGateStatus(const std::string &gateName, bool status)
@@ -733,9 +739,7 @@ bool Simulator::evaluateNode_(int nodeIdx)
     // LT(a, b) -> result: true if a < b
     if (n.inputs.size() >= 2)
     {
-      int aVal = static_cast<int>(next_[n.inputs[0]]);
-      int bVal = static_cast<int>(next_[n.inputs[1]]);
-      out = (aVal < bVal);
+      out = (next_[n.inputs[0]] < next_[n.inputs[1]]);
     }
     else
     {
@@ -749,9 +753,7 @@ bool Simulator::evaluateNode_(int nodeIdx)
     // GT(a, b) -> result: true if a > b
     if (n.inputs.size() >= 2)
     {
-      int aVal = static_cast<int>(next_[n.inputs[0]]);
-      int bVal = static_cast<int>(next_[n.inputs[1]]);
-      out = (aVal > bVal);
+      out = (next_[n.inputs[0]] > next_[n.inputs[1]]);
     }
     else
     {
@@ -765,9 +767,7 @@ bool Simulator::evaluateNode_(int nodeIdx)
     // EQ(a, b) -> result: true if a == b
     if (n.inputs.size() >= 2)
     {
-      int aVal = static_cast<int>(next_[n.inputs[0]]);
-      int bVal = static_cast<int>(next_[n.inputs[1]]);
-      out = (aVal == bVal);
+      out = (next_[n.inputs[0]] == next_[n.inputs[1]]);
     }
     else
     {
@@ -809,7 +809,7 @@ bool Simulator::evaluateNode_(int nodeIdx)
     // Set line highlight BEFORE evaluating - this ensures it shows immediately
     // Only show line highlight for "real" nodes, not internal _not_, _ps_, or _ns_ nodes
     // Internal nodes are auto-generated for inline NOT(), PS(), and NS() and clutter the visualization
-    if (n.name.find("_not_") != 0 && n.name.find("_ps_") != 0 && n.name.find("_ns_") != 0)
+    if (!n.internal)
     {
       curLine_ = n.sourceLine;
       lastVisibleLine_ = n.sourceLine;
@@ -837,6 +837,7 @@ bool Simulator::evaluateNode_(int nodeIdx)
   {
     // Always commit results after one pass (standard PLC scan behavior)
     std::swap(cur_, next_);
+    ++scans_;
     stepping_ = false;
     stepIdx_ = 0;
     curLine_ = lastVisibleLine_;
@@ -858,7 +859,7 @@ bool Simulator::evaluateNode_(int nodeIdx)
     {
       curNodeIdx_ = nodeIdx;
       const auto &node = prog_.nodes[nodeIdx];
-      if (node.name.find("_not_") != 0 && node.name.find("_ps_") != 0 && node.name.find("_ns_") != 0)
+      if (!node.internal)
       {
         curLine_ = node.sourceLine;
         lastVisibleLine_ = node.sourceLine;
@@ -868,6 +869,87 @@ bool Simulator::evaluateNode_(int nodeIdx)
     }
 
     std::swap(cur_, next_);
+    ++scans_;
     curLine_ = lastVisibleLine_;
     curNodeIdx_ = lastVisibleNodeIdx_;
   }
+
+void Simulator::transferStateFrom(const Simulator &old)
+{
+  const Program &op = old.prog_;
+
+  // Signal values by name. Internal names ("_not_3_out", "_nc", "_const_5")
+  // are positional or constant, so they are left alone.
+  for (const auto &[sym, id] : prog_.symbolToSignal)
+  {
+    if (sym.empty() || sym[0] == '_' || prog_.constantSignalValues.count(id))
+      continue;
+    auto it = op.symbolToSignal.find(sym);
+    if (it == op.symbolToSignal.end() || it->second >= static_cast<int>(old.cur_.size()))
+      continue;
+    cur_[id] = old.cur_[it->second];
+    auto pend = old.pendingSignals_.find(it->second);
+    if (pend != old.pendingSignals_.end())
+      pendingSignals_[id] = pend->second;
+  }
+  next_ = cur_;
+  prevStateAtCycleStart_ = cur_;
+  scans_ = old.scans_;
+
+  auto copyByName = [](auto &dst, const auto &src, const std::string &name)
+  {
+    auto it = src.find(name);
+    if (it != src.end())
+      dst[name] = it->second;
+  };
+
+  for (size_t i = 0; i < prog_.nodes.size(); ++i)
+  {
+    const auto &n = prog_.nodes[i];
+    bool known = false;
+    if (!n.internal)
+    {
+      for (size_t j = 0; j < op.nodes.size(); ++j)
+      {
+        if (op.nodes[j].internal || op.nodes[j].name != n.name)
+          continue;
+        known = true;
+        if (n.type == Program::Node::BTN)
+        {
+          auto l = old.latch_.find(static_cast<int>(j));
+          if (l != old.latch_.end())
+            latch_[static_cast<int>(i)] = l->second;
+        }
+        break;
+      }
+    }
+
+    if (known)
+    {
+      if (n.hardcodedPresetTime <= 0.0f)
+        copyByName(presentTimeSeconds, old.presentTimeSeconds, n.name);
+      if (n.hardcodedPresetValue < 0)
+        copyByName(presetCounterValue, old.presetCounterValue, n.name);
+      copyByName(nodeStatus, old.nodeStatus, n.name);
+      copyByName(timerElapsedTime, old.timerElapsedTime, n.name);
+      copyByName(currentCounterValue, old.currentCounterValue, n.name);
+      copyByName(counterPrevInput, old.counterPrevInput, n.name);
+      copyByName(psPrevInput, old.psPrevInput, n.name);
+      copyByName(nsPrevInput, old.nsPrevInput, n.name);
+      continue;
+    }
+
+    // New (or renumbered internal) edge detectors and counters start from the
+    // current input level so that editing never fires a spurious edge.
+    if (!n.inputs.empty())
+    {
+      bool level = cur_[n.inputs[0]] != 0;
+      if (n.type == Program::Node::PS_)
+        psPrevInput[n.name] = level;
+      else if (n.type == Program::Node::NS_)
+        nsPrevInput[n.name] = level;
+      else if (n.type == Program::Node::CTU_ || n.type == Program::Node::CTD_)
+        counterPrevInput[n.name] = level;
+    }
+  }
+}

@@ -2,6 +2,22 @@
 
 ## All notable changes to **Gates** (the SFML **GLL** logic simulator) will be documented in this file.
 
+## V2 (0.1.0) - 2026-10-02
+
+The simulator becomes a node editor. Same language, same simulation semantics, same Modbus integration.
+
+- New node canvas: every gate is a node, every declared IN/OUT/AIN/AOUT a terminal, wires coloured by live value; pan, zoom, box select, auto layout (wraps long step sequences into bands), zoomed-out overview
+- Visual editing written back to the `.gll` file: add nodes from the palette or the right-click menu, connect / unplug wires, input modifiers (NOT/PS/NS), rename, presets, delete; dropping a wire on empty canvas creates a connected node
+- Inspector panel with structured fields per node and live state; circuit notes (undriven outputs, signals nothing drives, unconnected inputs)
+- Code panel kept as a toggleable view with live highlighting, linked to the selection
+- Undo / redo for every edit and move; node positions in a `<file>.gll.layout` sidecar
+- Hot reload keeps the simulation state (signals, timers, counters, latches) instead of restarting it
+- Parse errors are shown in the app (line + message) instead of only on the console; the graph stays on the last valid version
+- Toolbar, status bar, Modbus dialog and shortcut overlay (F1) redesigned; window is resizable
+- Language core split into a lossless syntax layer (`Gll.hpp`), compiler (`Parser.hpp`) and editing operations (`Edits.hpp`), with a headless test suite (`-DGLL_BUILD_TESTS=ON`) that checks the new parser against the V1 parser on every sample
+- Fixes: comparator literals accept the full 32-bit range (were limited to 0-255); comparators compare full 64-bit values; token highlighting on indented lines; aliased declarations are highlighted; UTF-8 names render correctly; nested modifiers like `NOT(PS(a))` are reported as an error instead of producing a bogus signal
+- Opening a file that does not exist creates it
+
 ## 0.0.7 - 2026-01-06
 
 - Added configurable register mode in settings: 16-bit (0-65535) or 32-bit (0-4,294,967,295)

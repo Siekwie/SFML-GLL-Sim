@@ -16,9 +16,31 @@ project(Gates LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(GLL_BUILD_TESTS "Build the headless gll_tests executable" OFF)
+
 # Put outputs under build/<config> so DLLs can sit beside the exe
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
+
+# Language core: syntax layer, compiler, editing operations.
+# No SFML / Modbus dependency, so it can be unit tested headless.
+add_library(gll_core STATIC
+  src/Gll.cpp
+  src/Parser.cpp
+  src/Edits.cpp
+)
+target_include_directories(gll_core PUBLIC src)
+
+if(GLL_BUILD_TESTS)
+    add_executable(gll_tests
+      tests/test_main.cpp
+      tests/test_edits.cpp
+      tests/legacy/LegacyParser.cpp
+    )
+    target_link_libraries(gll_tests PRIVATE gll_core)
+    target_include_directories(gll_tests PRIVATE tests/legacy)
+    target_compile_definitions(gll_tests PRIVATE GLL_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+endif()
 
 # Platform detection and SFML configuration
 if(WIN32)
@@ -47,14 +69,19 @@ elseif(UNIX AND NOT APPLE)
     message(STATUS "Found system libmodbus: ${MODBUS_VERSION}")
 endif()
 
-add_executable(GLLSimulator 
+add_executable(GLLSimulator
   src/main.cpp
-  src/Parser.cpp
+  src/App.cpp
+  src/Document.cpp
+  src/GraphView.cpp
+  src/Canvas.cpp
+  src/Panels.cpp
+  src/Widgets.cpp
   src/Graph.cpp
   src/Sim.cpp
-  src/UI.cpp
   src/ModbusManager.cpp
 )
+target_link_libraries(GLLSimulator PRIVATE gll_core)
 
 if(WIN32)
     target_link_libraries(GLLSimulator PRIVATE SFML::Graphics SFML::Window SFML::System ${MODBUS_LIBRARIES})

@@ -1,20 +1,20 @@
 #pragma once
-#include <cstdint>
+// V1 (pre node-editor) GLL parser, used only by the tests as reference semantics.
 #include <string>
-#include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
-// Compiled, simulation-ready form of a GLL script (see Gll.hpp for the
-// editable syntax layer this is compiled from).
+namespace legacy
+{
+
 struct Program
 {
   std::vector<std::string> inputNames, outputNames;
   std::vector<std::string> analogInputNames, analogOutputNames;  // Analog I/O signals
   std::unordered_map<std::string, int> symbolToSignal;
-  int signalCount = 0;  // number of distinct signal ids (aliases share an id)
   std::unordered_set<int> analogSignals;  // Set of signal IDs that are analog (not boolean)
-  std::unordered_map<int, uint64_t> constantSignalValues;  // Signal ID -> constant value (for literals)
+  std::unordered_map<int, int> constantSignalValues;  // Signal ID -> constant value (for hex literals)
 
   struct TokenSpan
   {
@@ -47,8 +47,7 @@ struct Program
     std::string name;
     std::vector<int> inputs;
     std::vector<int> outputs;
-    int sourceLine = -1;
-    bool internal = false;  // auto-generated for inline NOT()/PS()/NS()
+    int sourceLine;
     float hardcodedPresetTime = -1.0f;
     int hardcodedPresetValue = -1;
     int cvOutputSignal = -1;  // For counters: optional second output to expose CV value
@@ -56,3 +55,13 @@ struct Program
   std::vector<Node> nodes;
   std::vector<std::string> sourceLines;
 };
+
+struct ParseResult
+{
+  bool ok;
+  std::string msg;
+};
+
+ParseResult parseFile(const std::string &path, Program &out);
+
+}  // namespace legacy

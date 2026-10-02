@@ -1,10 +1,16 @@
 #pragma once
 #include "AST.hpp"
+#include <memory>
 #include <vector>
 #include <unordered_map>
 
 struct Simulator {
-  explicit Simulator(const Program& p);
+  explicit Simulator(std::shared_ptr<const Program> p);
+  // Carry runtime state (signal values, timers, counters, buttons, edge
+  // memories) over from a simulator of a previous version of the program,
+  // matched by signal and node name. Used after every edit / hot reload so
+  // changing the circuit does not reset a running simulation.
+  void transferStateFrom(const Simulator& old);
   void update(float dt, float simHz, bool running, bool stepOnce);
 
   // BTN control hooks
@@ -18,6 +24,7 @@ struct Simulator {
   void setPresetTime(const std::string& gateName, float seconds);
   float getPresetTime(const std::string& gateName);
   bool getTGateStatus(const std::string& gateName);
+  float getTimerElapsed(const std::string& gateName) const;
   void setTGateStatus(const std::string& gateName, bool status);
 
   // Counter control hooks
@@ -38,11 +45,14 @@ struct Simulator {
   const std::vector<uint64_t>& signals() const { return cur_; }
   int currentEvaluatingLine() const { return curLine_; }
   int currentEvaluatingNode() const { return curNodeIdx_; }
-  bool isValidTopology() const { return !topo_.empty() && topo_.size() == prog_.nodes.size(); }
+  bool isValidTopology() const { return topo_.size() == prog_.nodes.size(); }
   bool isSteppingThrough() const { return stepping_; }
+  uint64_t scanCount() const { return scans_; }
 
 private:
+  std::shared_ptr<const Program> progOwner_;
   const Program& prog_;
+  uint64_t scans_ = 0;
   std::vector<int> topo_;
   std::vector<uint64_t> cur_, next_;
   float acc_ = 0.f;

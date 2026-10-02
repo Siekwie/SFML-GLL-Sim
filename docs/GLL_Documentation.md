@@ -62,7 +62,7 @@ EQ matchesCount(sensorValue, counterCV) -> sensorMatchesCount
 - HEX/DEC toggle button to switch display and input mode
 
 **Literal Syntax for Comparators:**
-You can use hex or decimal literals in comparator arguments:
+You can use hex or decimal literals in comparator arguments (the full 32-bit range since V2; V1 only accepted 0-255):
 
 - `"00000010"` - any hex value
 - `"128"` - decimal format also supported
@@ -129,7 +129,7 @@ The `NOT` gate is used to compute the logical `NOT` of its input. The output is 
 AND gate3(a, NOT(b)) -> c
 ```
 
-This makes the circuit "code" more dense and easier/natural to read.
+This makes the circuit "code" more dense and easier/natural to read. Modifiers cannot be nested (`NOT(PS(a))` is an error); use a standalone node for that.
 
 **Truth table**:
 | B | X |
@@ -496,33 +496,57 @@ LT tempLow(temperature, "0x10") -> tooCold
 
 Mapping configuration (IP, Port, Slave ID, Bit Counts, Analog Register Counts, and Register Mode) can be adjusted in the **Settings** menu. These settings are saved to `modbus_config.txt`.
 
+### **Node Editor (V2)**
+
+Since V2 the simulator is a visual node editor. The `.gll` file stays the single source of truth: every change made on the canvas or in the inspector is written straight back into the file as ordinary GLL, and every change made to the file in another editor shows up on the canvas immediately. You can work in either, or both side by side.
+
+- **Canvas**: every gate statement is a node; every declared `IN`, `OUT`, `AIN` and `AOUT` signal is a terminal. Wires run from the node that writes a signal to every node that reads it. Wires and port dots are green when HIGH, grey/red when LOW and orange for analog values.
+- **Dashed wires** are read *before* they are written in the scan (a forward reference, see [Execution Model](#execution-model)); the value arrives one scan later. This is normal for latches and step sequences.
+- **Palette** (left): drag a node onto the canvas, or click it to drop it in the middle of the view. Right-clicking the canvas offers the same list.
+- **Connecting**: drag from an output port to an input port (or the other way round). Dropping onto a node body uses its first free input. Dragging a connected input away unplugs it; dropping a wire on empty canvas offers to create a new node that is connected right away.
+- **Inputs of AND/OR/XOR** grow: drop a wire on the `+` port to add one.
+- **Input modifiers**: right-click an input port (or use the chips in the inspector) to make it inverted `NOT(x)`, rising edge `PS(x)` or falling edge `NS(x)`. The port shows a bubble / triangle.
+- **Inspector** (right): name, presets (`PT`, `PV`), every input as a text field (type a signal name or, for comparators, a constant such as `0x80`), output signal names and the live state. Renaming an output renames the signal everywhere, so wires stay attached.
+- **Code panel** (right, below the inspector): the file with live signal colours and the line being evaluated. Clicking a line selects its node and vice versa.
+- **Notes**: with nothing selected the inspector lists things worth a look — undriven outputs, signals nothing drives, unconnected inputs.
+- **Undo / redo** cover every edit and node move (`Ctrl+Z` / `Ctrl+Y`).
+- **Layout**: node positions are stored next to the circuit in `<file>.gll.layout`, so the `.gll` itself stays plain GLL that V1 can still run. Nodes without a stored position are placed automatically; **Auto layout** (`L`) re-arranges everything by signal flow.
+- If the file contains a syntax error, the code panel shows it and the graph keeps showing the last valid version (read-only) until the error is fixed.
+
+When the editor creates nodes it writes `_nc` ("not connected") into inputs that have no wire yet, for example `SR sr1(_nc, _nc) -> sr1_Q`. `_nc` is an ordinary signal nobody drives, so it always reads LOW. New nodes get an output signal named `<node>_Q`.
+
 ### **Simulation Features**
 
 #### **Hot Reloading**
 
-The simulator monitors the loaded `.gll` or `.txt` file for changes. When you save the file in your external editor, Gates will automatically re-parse the logic and refresh the simulation state without needing to restart.
+The editor monitors the loaded `.gll` or `.txt` file. When you save the file in your external editor, Gates re-parses it and updates the graph. The running simulation keeps its state (signal values, timers, counters, latched buttons) for everything that still exists, so you can change a circuit while it runs.
 
 #### **Execution Modes**
 
-- **Play/Pause**: Use the **Space** key or the Play button in the sidebar to start/stop the simulation.
-- **Step Once**: Use the **Period (.)** key or the Step button to advance the simulation by one node evaluation.
-- **Repeat/Once**: Toggle between continuous execution and single-cycle execution in the sidebar.
+- **Run / Pause**: **Space** or the Run button in the toolbar.
+- **Step Once**: **Period (.)** or the Step button evaluates the next node.
+- **Repeat / Once**: toggle between continuous scanning and stopping after one complete scan.
 
 #### **Speed Control**
 
-Use the `+` and `-` keys or the slider in the sidebar to adjust the simulation speed (Evaluation frequency). At lower speeds, you can see the signal propagation highlighted line-by-line.
+Use the `+` and `-` keys or the speed slider in the toolbar to adjust the evaluation frequency (nodes per second). Below about 40 Hz the node currently being evaluated is outlined on the canvas and its line is highlighted in the code panel.
 
 ### **Controls**
 
-- **Space** - Play/Pause simulation
-- **Period (.)** - Step once evaluation
-- **+/-** - Speed up/slow down simulation frequency
-- **Click** input widgets to toggle signals
-- **Click** BTN widgets for momentary press
-- **Ctrl+Click** BTN widgets to latch (hold state)
-- **Click** Timer widgets to edit preset time (if not hardcoded)
-- **Click** Analog input widgets to edit value (type hex digits in HEX mode, decimal in DEC mode)
-- **Click** HEX/DEC toggle on analog widgets to switch display mode
+Press **F1** (or the `?` button) in the app for the full list.
+
+- **Space** - Run / pause
+- **Period (.)** - Evaluate one node
+- **+/-** - Faster / slower
+- **Ctrl+Z / Ctrl+Y** - Undo / redo
+- **Del / Backspace** - Delete the selection
+- **F** - Fit the circuit in view, **L** - Auto layout
+- **Tab** - Show / hide the side panel, **P** - Show / hide the palette
+- **Drag empty canvas** (or right / middle drag) - Pan, **Wheel** - Zoom, **Shift+drag** - Box select
+- **Click** the switch of an `IN` terminal to toggle it
+- **Click** a `BTN` node for a momentary press, **Ctrl+Click** to latch it
+- **Click** the value of an `AIN` terminal to edit it in the inspector (HEX/DEC switch next to the field)
+- **Timer / counter presets** are edited in the inspector and written into the file as the first argument (`TON t("500ms", x)`)
 
 ### **Execution Model**
 

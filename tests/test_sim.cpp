@@ -102,6 +102,18 @@ void testEdgeMemoryWhileGated()
   }
 }
 
+// x and y in ONE circuit, sharing the same inputs; two independent PS nodes
+// read `a`. x is LOW exactly on the scans where a rises (3 and 9); y pulses
+// only at 9, because the rise at 3 happened while b was LOW.
+void testSharedInputs()
+{
+  const std::string text = "IN a, b\nOUT x, y\nOR gx(NOT(PS(a))) -> x\nAND gy(b, PS(a)) -> y\n";
+  auto s = [](bool a, bool b, bool x, bool y) { return Step{{{"a", a}, {"b", b}}, {{"x", x}, {"y", y}}}; };
+  runSequence("x and y shared inputs", text,
+              {s(0, 0, 1, 0), s(0, 0, 1, 0), s(1, 0, 0, 0), s(1, 0, 1, 0), s(1, 0, 1, 0), s(1, 1, 1, 0),
+               s(1, 1, 1, 0), s(0, 1, 1, 0), s(1, 1, 0, 1), s(1, 1, 1, 0)});
+}
+
 // Every inline chain must behave exactly like the same chain built from
 // standalone NOT / PS / NS nodes, for any input sequence.
 void testChainsMatchStandaloneNodes()
@@ -191,6 +203,7 @@ int runSimTests()
 {
   testNotOfRisingEdge();
   testEdgeMemoryWhileGated();
+  testSharedInputs();
   testChainsMatchStandaloneNodes();
   testNoSpuriousEdgeAfterReload();
   std::printf("sim tests: %d checks, %d failures\n", g_checks, g_failures);

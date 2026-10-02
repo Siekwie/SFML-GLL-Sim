@@ -140,6 +140,8 @@ OR notRising(NOT(PS(a))) -> x
 
 `NOT(PS(a))` first detects the rising edge of `a`, then inverts it. Any combination and depth works (`NOT(NS(a))`, `PS(NOT(a))`, ...) and behaves exactly like the same chain built from standalone `NOT` / `PS` / `NS` nodes. (V1 only got this right when the inner modifier happened to be processed first; `NOT(PS(a))` silently turned into a constant HIGH there.)
 
+**Power-up**: edge memory starts LOW, so the first scan can pulse. `PS(a)` pulses on scan 1 if `a` is already HIGH, and — more surprisingly — `PS(NOT(a))` pulses on scan 1 whenever `a` starts LOW, which is the common case. (`NS(a)` never pulses on scan 1.) This matches V1 and the usual PLC power-up behaviour.
+
 Inline modifiers are separate internal nodes evaluated on every scan, before the gate that uses them. An edge detector therefore always tracks its input, even while the gate's other inputs make the result irrelevant: in `AND y(b, PS(a))`, a rise of `a` that happens while `b` is LOW is consumed in that scan and does not fire later when `b` goes HIGH.
 
 **Truth table**:
@@ -524,7 +526,7 @@ Since V2 the simulator is a visual node editor. The `.gll` file stays the single
 - **Layout**: node positions are stored next to the circuit in `<file>.gll.layout`, so the `.gll` itself stays plain GLL that V1 can still run. Nodes without a stored position are placed automatically; **Auto layout** (`L`) re-arranges everything by signal flow.
 - If the file contains a syntax error, the code panel shows it and the graph keeps showing the last valid version (read-only) until the error is fixed.
 
-When the editor creates nodes it writes `_nc` ("not connected") into inputs that have no wire yet, for example `SR sr1(_nc, _nc) -> sr1_Q`. `_nc` is an ordinary signal nobody drives, so it always reads LOW. New nodes get an output signal named `<node>_Q`.
+When the editor creates nodes it writes `_nc` ("not connected") into inputs that have no wire yet, for example `SR sr1(_nc, _nc) -> sr1_Q`. `_nc` is an ordinary signal nobody drives, so it always reads LOW. Unplugging a wire also removes the input's modifiers. A modifier written on an unconnected input still applies to that LOW like to any other signal, so `NOT(_nc)` and `NOT(PS(_nc))` read HIGH and `PS(_nc)` / `NS(_nc)` read LOW. Since that is almost always a missing wire, the editor flags such ports in orange and lists them in the notes. New nodes get an output signal named `<node>_Q`.
 
 ### **Simulation Features**
 

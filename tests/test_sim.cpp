@@ -115,9 +115,9 @@ void testSharedInputs()
                s(1, 1, 1, 0), s(0, 1, 1, 0), s(1, 1, 0, 1), s(1, 1, 1, 0)});
 }
 
-// PS(NOT(a)) pulses on the falling edge of a, like NS(a). Scan 1 is left out on
-// purpose: edge memory starts LOW, so PS(NOT(a)) also pulses on the first scan
-// when a starts LOW (same as V1); whether that should change is still open.
+// PS(NOT(a)) pulses on the falling edge of a, like NS(a). It also pulses on
+// scan 1 when a starts LOW: edge memory starts LOW (PLC power-up, same as V1),
+// and NOT(a) is HIGH from the first scan. This is intended and pinned here.
 void testInvertedRisingIsFallingEdge()
 {
   const std::string text = "IN a\nOUT x, n\nOR gx(PS(NOT(a))) -> x\nOR gn(NS(a)) -> n\n";
@@ -128,11 +128,60 @@ void testInvertedRisingIsFallingEdge()
   {
     sim.setSignal("a", a[k]);
     scan(sim, *prog);
-    if (k == 0)
-      continue;
     bool fall = k == 7;  // scan 8
-    SCHECK(sim.getSignalValue("x") == fall);
-    SCHECK(sim.getSignalValue("n") == fall);
+    SCHECK(sim.getSignalValue("x") == (fall || k == 0));  // + power-up pulse on scan 1
+    SCHECK(sim.getSignalValue("n") == fall);              // NS(a) has none: a starts LOW
+  }
+
+  // The same rule for a plain PS(a) when a is already HIGH at power-up.
+  auto p2 = build("IN a\nOUT x\nOR gx(PS(a)) -> x\n");
+  Simulator s2(p2);
+  s2.setSignal("a", true);
+  scan(s2, *p2);
+  SCHECK(s2.getSignalValue("x"));
+  scan(s2, *p2);
+  SCHECK(!s2.getSignalValue("x"));
+}
+
+// Modifiers on an unconnected input (`_nc`, an ordinary signal nothing drives,
+// so LOW). The chain is applied to that LOW like to any other signal: edges
+// never fire (except PS over an inner NOT on the power-up scan) and NOT flips.
+// Pinned so this cannot change by accident; the editor warns about it instead.
+void testUnconnectedWithModifiers()
+{
+  const std::string text = "IN a\n"
+                           "OUT plain, ps, ns, nt, nps, nns, psn, nsn\n"
+                           "OR g0(_nc) -> plain\n"
+                           "OR g1(PS(_nc)) -> ps\n"
+                           "OR g2(NS(_nc)) -> ns\n"
+                           "OR g3(NOT(_nc)) -> nt\n"
+                           "OR g4(NOT(PS(_nc))) -> nps\n"
+                           "OR g5(NOT(NS(_nc))) -> nns\n"
+                           "OR g6(PS(NOT(_nc))) -> psn\n"
+                           "OR g7(NS(NOT(_nc))) -> nsn\n";
+  struct Expect
+  {
+    const char *sig;
+    bool first, later;
+  } expect[] = {{"plain", 0, 0}, {"ps", 0, 0},  {"ns", 0, 0},  {"nt", 1, 1},
+                {"nps", 1, 1},   {"nns", 1, 1}, {"psn", 1, 0}, {"nsn", 0, 0}};
+  auto prog = build(text);
+  Simulator sim(prog);
+  const bool a[] = {0, 1, 0, 1, 1, 0};  // unrelated activity in the circuit
+  for (int k = 0; k < 6; ++k)
+  {
+    sim.setSignal("a", a[k]);
+    scan(sim, *prog);
+    for (const auto &e : expect)
+    {
+      bool want = k == 0 ? e.first : e.later;
+      ++g_checks;
+      if (sim.getSignalValue(e.sig) != want)
+      {
+        ++g_failures;
+        std::printf("FAIL unconnected %s: scan %d is %d, expected %d\n", e.sig, k + 1, !want, want);
+      }
+    }
   }
 }
 
@@ -246,6 +295,7 @@ int runSimTests()
   testEdgeMemoryWhileGated();
   testSharedInputs();
   testInvertedRisingIsFallingEdge();
+  testUnconnectedWithModifiers();
   testChainsMatchStandaloneNodes();
   testNoSpuriousEdgeAfterReload();
   std::printf("sim tests: %d checks, %d failures\n", g_checks, g_failures);

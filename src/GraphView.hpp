@@ -32,6 +32,28 @@ struct Port
   bool dangling = false;  // refers to a signal nothing drives
   int signal = -1;
   sf::Vector2f pos;       // world position of the port dot
+
+  // A modifier chain on an input with nothing connected. It still works on the
+  // LOW of the unconnected signal (so NOT(_nc) is constantly HIGH), but it is
+  // almost always a wiring mistake, so the editor warns about it.
+  bool modifierWithoutWire() const { return symbol.empty() && !spare && !literal && !mods.empty(); }
+  // What such an input reads, applying the chain inside out to LOW. Edge
+  // memory starts LOW, so on the first scan PS passes a HIGH through (a
+  // power-up pulse) and NS reads LOW; afterwards edges of a constant are LOW.
+  bool modifiedValue(bool firstScan) const
+  {
+    bool v = false;
+    for (auto m = mods.rbegin(); m != mods.rend(); ++m)
+      v = *m == gll::Mod::Not ? !v : (firstScan && *m == gll::Mod::Ps && v);
+    return v;
+  }
+  // "always HIGH", or "LOW (HIGH on the first scan)" for e.g. PS(NOT(_nc)).
+  std::string modifiedValueText() const
+  {
+    bool later = modifiedValue(false), first = modifiedValue(true);
+    std::string s = later ? "HIGH" : "LOW";
+    return first == later ? "always " + s : s + " (" + (first ? "HIGH" : "LOW") + " on the first scan)";
+  }
 };
 
 struct Node

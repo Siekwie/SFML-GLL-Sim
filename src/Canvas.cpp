@@ -616,6 +616,9 @@ void Canvas::handle(const FrameInput &in, bool mouseFree)
       std::string tip;
       if (p.spare)
         tip = "Drop a wire here to add an input";
+      else if (p.modifierWithoutWire())
+        tip = gll::modChainText(p.mods, "") + " but nothing connected: " + p.modifiedValueText() +
+              " — probably a missing wire";
       else if (p.symbol.empty())
         tip = hoverPort_.input ? "Not connected — drag to an output" : "Drag to an input to connect";
       else if (p.literal)
@@ -895,7 +898,8 @@ void Canvas::drawPort(sf::RenderTarget &rt, const Port &p, bool input, bool gate
   }
   if (!connected || p.literal)
   {
-    draw::circle(rt, p.pos, r - 0.5f, Theme::NodeBody, p.literal ? Theme::Analog : Theme::TextFaint, 1.5f);
+    sf::Color ring = p.literal ? Theme::Analog : p.modifierWithoutWire() ? Theme::Warning : Theme::TextFaint;
+    draw::circle(rt, p.pos, r - 0.5f, Theme::NodeBody, ring, 1.5f);
     return;
   }
   sf::Color c = p.dangling ? Theme::Warning : signalColor(p.signal, false);

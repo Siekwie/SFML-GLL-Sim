@@ -433,8 +433,19 @@ float Inspector::drawOverview(Editor &ed, Canvas &canvas, sf::FloatRect r)
     }
     if (n.isGate())
     {
-      bool unconnected = std::any_of(n.ins.begin(), n.ins.end(),
-                                     [](const graph::Port &p) { return p.symbol.empty() && !p.spare; });
+      bool unconnected = false;
+      for (const auto &p : n.ins)
+      {
+        if (p.modifierWithoutWire())
+        {
+          std::string port = p.label.empty() ? "input " + std::to_string(p.index + 1) : "input " + p.label;
+          items.push_back({n.name + " " + port + " has " + gll::modChainText(p.mods, "") +
+                               " but nothing connected (" + p.modifiedValueText() + ")",
+                           n.key, Theme::Warning});
+        }
+        else if (p.symbol.empty() && !p.spare && !p.literal)
+          unconnected = true;
+      }
       if (unconnected)
         items.push_back({n.name + " has unconnected inputs (read as LOW)", n.key, Theme::TextDim});
     }
@@ -463,6 +474,7 @@ float Inspector::drawOverview(Editor &ed, Canvas &canvas, sf::FloatRect r)
     draw::circle(*ui.rt, {row.x + 3.f, row.y + 8.f}, 3.f, it.color);
     draw::text(*ui.rt, ui.font, draw::fit(ui.font, it.text, 12, row.w - 14.f), {row.x + 14.f, row.y}, 12,
                Theme::TextDefault);
+    ui.tooltip(line, it.text);  // full text when the line is cut off
     if (!it.key.empty() && ui.takeClick(line))
     {
       ed.select(it.key);
@@ -616,8 +628,11 @@ float Inspector::drawGate(Editor &ed, Canvas &canvas, const Node &n, sf::FloatRe
     }, lit ? "signal or constant" : "not connected", editable);
     if (stale())
       return row.y - r.position.y;
-    if (p.dangling)
+    if (p.dangling || p.modifierWithoutWire())
       draw::circle(*ui.rt, {f.position.x + f.size.x - 10.f, f.position.y + f.size.y / 2.f}, 3.5f, Theme::Warning);
+    if (p.modifierWithoutWire())
+      ui.tooltip(f, gll::modChainText(p.mods, "") + " on an unconnected input: " + p.modifiedValueText() +
+                        " — probably a missing wire");
 
     if (!p.literal)
     {

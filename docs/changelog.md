@@ -2,10 +2,19 @@
 
 ## All notable changes to **Gates** (the SFML **GLL** logic simulator) will be documented in this file.
 
-## V2 (0.1.0) - 2026-10-02
+## V2 (0.1.0) - 2026-11-07
 
 The simulator becomes a node editor. Same language, same simulation semantics, same Modbus integration.
 
+**Upgrading from V1:** existing `.gll` files run unchanged. The `.gll` format is the same, and the editor keeps node positions in a separate `<file>.gll.layout` file. `ModbusManager` and `modbus_config.txt` are untouched, so `INPUT_n` / `OUTPUT_n` / `AINPUT_n` / `AOUTPUT_n` map to the same Modbus addresses. Before the release, every sample, every code example from the V1 documentation and a set of edge-case circuits were run through the V1 and the V2 engine with the same random inputs (600 scans x 5 seeds each): every signal matched on every scan. A V1 file only behaves differently where it hit one of these V1 bugs:
+
+- `NOT(PS(x))` / `NOT(NS(x))` were stuck HIGH in V1. They now pulse LOW on the edge. `PS(NOT(x))` is unchanged.
+- Comparator literals above 255 (e.g. `"1000"`, `"0x1FF"`) were silently treated as an undriven signal (always 0) in V1. They now compare against the real value.
+- Analog values of 2,147,483,648 or more (only possible in 32-bit register mode) compared as negative numbers in V1. They now compare correctly.
+
+Changes:
+
+- Windows builds work from a clean checkout: libmodbus 3.1.11 (LGPL-2.1+) is vendored in `vendored/libmodbus` and built as `modbus.dll` (PR #1)
 - New node canvas: every gate is a node, every declared IN/OUT/AIN/AOUT a terminal, wires coloured by live value; pan, zoom, box select, auto layout (wraps long step sequences into bands), zoomed-out overview
 - Visual editing written back to the `.gll` file: add nodes from the palette or the right-click menu, connect / unplug wires, input modifiers (NOT/PS/NS), rename, presets, delete; dropping a wire on empty canvas creates a connected node
 - Inspector panel with structured fields per node and live state; circuit notes (undriven outputs, signals nothing drives, unconnected inputs)

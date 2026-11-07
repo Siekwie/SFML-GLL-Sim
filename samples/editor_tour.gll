@@ -1,0 +1,11 @@
+# Editor tour: timers, counters, analog values, edge detection and a button
+IN start, pulse, reset
+AIN level
+OUT motor, full
+AOUT count
+
+TON delay("2s", start) -> running
+CTU counter("5", PS(pulse), reset) -> full, count
+GT high(level, "0x80") -> tooHigh
+BTN stop() -> stopReq
+AND run(running, NOT(tooHigh), NOT(stopReq)) -> motor

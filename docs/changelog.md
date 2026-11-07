@@ -15,6 +15,7 @@ The simulator becomes a node editor. Same language, same simulation semantics, s
 Changes:
 
 - Windows builds work from a clean checkout: libmodbus 3.1.11 (LGPL-2.1+) is vendored in `vendored/libmodbus` and built as `modbus.dll` (PR #1)
+- Window title is converted from UTF-8, so the dash and non-ASCII file names are no longer garbled
 - New node canvas: every gate is a node, every declared IN/OUT/AIN/AOUT a terminal, wires coloured by live value; pan, zoom, box select, auto layout (wraps long step sequences into bands), zoomed-out overview
 - Visual editing written back to the `.gll` file: add nodes from the palette or the right-click menu, connect / unplug wires, input modifiers (NOT/PS/NS), rename, presets, delete; dropping a wire on empty canvas creates a connected node
 - Inspector panel with structured fields per node and live state; circuit notes (undriven outputs, signals nothing drives, unconnected inputs)

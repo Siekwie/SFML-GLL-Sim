@@ -29,7 +29,9 @@ App::App(const std::filesystem::path &file, const std::filesystem::path &exeDir)
   auto desktop = sf::VideoMode::getDesktopMode();
   sf::Vector2u size(std::max(1100u, desktop.size.x * 9 / 10), std::max(700u, desktop.size.y * 9 / 10));
   size = {std::min(size.x, desktop.size.x), std::min(size.y, desktop.size.y)};
-  window_.create(sf::VideoMode(size), "GLL — " + doc_.fileName(), sf::Style::Default, sf::State::Windowed, settings);
+  const std::string title = "GLL — " + doc_.fileName();  // UTF-8; sf::String would read it byte by byte
+  window_.create(sf::VideoMode(size), sf::String::fromUtf8(title.begin(), title.end()), sf::Style::Default,
+                 sf::State::Windowed, settings);
   window_.setFramerateLimit(60);
   window_.setKeyRepeatEnabled(true);
   ok_ = true;
